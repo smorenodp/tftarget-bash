@@ -1,0 +1,212 @@
+#!/bin/bash
+
+TFPLAN=".tftarget"
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BROWN='\033[0;33m'
+NC='\033[0m'
+
+command="plan"
+CHECK=1
+OUTPUT=1
+CACHE=0
+ALL=0
+
+contains() {
+    element=$1
+    shift
+    list=$@
+    for item in $list; do
+        if [[ "$element" == "$item" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+showResource() {
+    change=$1
+    arrch=(${change//,/ })
+    if [[  "${arrch[1]}" == "create" ]]; then
+        echo -e "${GREEN}$i) ${arrch[1]} ${arrch[0]}${NC}"
+    elif [[  "${arrch[1]}" == "delete" ]]; then
+        echo -e "${RED}$i) ${arrch[1]} ${arrch[0]}${NC}"
+    elif [[  "${arrch[1]}" == "update" ]]; then
+        echo -e "${YELLOW}$i) ${arrch[1]} ${arrch[0]}${NC}"
+    else
+        echo "Type ${arrch[1]} not recognized for resource ${arrch[0]}"
+    fi
+
+}
+
+generateSeq() {
+    echo "Entering here"
+    resource=$1
+    local -n arr=$2
+    range=(${resource/-/ })
+    initial=${range[0]}
+    final=${range[1]}
+    auxSeq=$(seq $((initial-1)) $((final-1)))
+
+    arr=${auxSeq[@]}
+}
+
+VAR_FILE="vars/$(cat .terraform/environment).tfvars"
+
+while true; do
+    case "$1" in
+        "-plan")
+        command="plan"
+        shift
+        ;;
+        "-apply")
+        command="apply"
+        shift
+        ;;
+        "-v")
+        VAR_FILE=$2
+        shift 2
+        ;;
+        "-prefix")
+        PREFIX=$2
+        shift 2
+        ;;
+        "-cache")
+        CACHE=1
+        shift
+        ;;
+        "-all")
+        ALL=1
+        shift
+        ;;
+        "-y")
+        CHECK=0
+        shift
+        ;;
+        "-q")
+        OUTPUT=0
+        shift
+        ;;
+        
+        *)
+        break
+        ;;
+    esac
+done
+
+echo "Generating tfplan..."
+if [[ $CACHE -eq 1 && -f "$TFPLAN" ]]; then
+    echo "Using cached file $TFPLAN"
+else
+    if [[ $OUTPUT -eq 0 ]]; then
+        terraform plan -var-file $VAR_FILE -out $TFPLAN > /dev/null
+    else
+        terraform plan -var-file $VAR_FILE -out $TFPLAN
+    fi
+fi
+
+if [[ ! $? -eq 0 ]];then
+	echo -e "${RED}The plan failed${NC}"
+	exit 1
+fi
+
+if [[ ! -z $PREFIX ]]; then
+    changes=$(terraform show -json $TFPLAN | jq --arg prefix $PREFIX -r '.resource_changes[] | select(.change.actions != ["no-op"]) | select(.address | startswith($prefix))| [.address, .change.actions[0]] | @csv' | sed -e 's|\"\"|\?|g' | tr -d '"' | sed -e 's|\?|\"|g' )
+else
+    changes=$(terraform show -json $TFPLAN | jq -r '.resource_changes[] | select(.change.actions != ["no-op"]) | [.address, .change.actions[0]] | @csv' | tr -d '"')
+fi
+
+if [[ ! -z $NOMAD_ADDR ]]; then
+    env=$(cat .terraform/environment)
+    env=${env//-/.}
+    if ! echo $NOMAD_ADDR | grep -q ${env%.1}; then
+        echo -e "${RED}Be careful! Your variables loaded are not the workspace being used!${NC}"
+        echo
+    fi
+fi
+
+echo -e "Resources for workspace ${BROWN}[$(cat .terraform/environment)]${NC}"
+echo
+i=1
+listResources=()
+for change in $changes; do
+    showResource $change
+    i=$((i+1))
+    listResources+=(${arrch[0]})
+done
+echo
+
+if [[ $ALL -eq 0 ]]; then
+
+    read -p "Select the resources (Ex: 1,3,4) > " selected
+
+    resources=(${selected//,/ })
+    targets=()
+    excluded=()
+    included=()
+    for resource in "${resources[@]}"; do
+    if [[ $resource == \![0-9]* ]]; then
+        parsedResource=${resource#"!"}
+        if [[ "$parsedResource" == *"-"* ]]; then
+            auxArr=()
+            generateSeq $parsedResource auxArr
+            excluded+=(${auxArr[@]})
+        else
+            excluded+=($((parsedResource-1)))
+        fi
+    else
+        if [[ "$resource" == *"-"* ]]; then
+            auxArr=()
+            generateSeq $resource auxArr
+            included+=(${auxArr[@]})
+        else
+            included+=($((resource-1)))
+        fi
+    fi
+    done
+
+    if [[ "${#included[@]}" -gt 0 ]]; then
+        finalResources=${included[@]}
+    else
+        finalResources=$(seq 0 "$((${#listResources[@]}-1))")
+    fi
+else
+    finalResources=$(seq 0 "$((${#listResources[@]}-1))")
+fi
+
+
+
+for resource in ${finalResources[@]}; do
+    if ! contains $resource ${excluded[@]}; then
+        target=${listResources[$resource]}
+	if [[ ! "$target" =~ ^[^\[]*\[[0-9]+\]*$ ]]; then
+		AUX=${target/\[/\[\"}
+		target=${AUX/\]/\"\]}
+	fi
+        targets+=("-target '$target'")
+    fi
+done
+
+
+echo -e "The command to launch is - ${BROWN}terraform $command -var-file=$VAR_FILE ${targets[@]}${NC}"
+if [[ $CHECK -eq 1 ]]; then
+    echo "Do you accept?"
+    read accept
+    case $accept in
+    "yes"|"y")
+        ;;
+    "no"|"n")
+        echo "Canceling $command..."
+        if [[ $CACHE -eq 0 ]]; then
+            rm $TFPLAN
+        fi
+        exit 0
+        ;;
+    esac
+fi
+eval terraform $command -var-file=$VAR_FILE ${targets[@]}
+
+if [[ $CACHE -eq 0 ]]; then
+    rm $TFPLAN
+fi
