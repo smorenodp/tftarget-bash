@@ -6,9 +6,9 @@ Script to make easier the need to use targets in terraform, when launching tftar
 
 Each line corresponds with one resource that exists in the terraform report, the green one are the ones being created, the yellow ones the updated and the red ones the deleted (this is also explained next to the resource). The first thing we see in the line is a number, this is the id of the resource and the value used when referencing it in when selecting resources for the target command. There are 3 ways to reference them:
 
-* <number> -> to reference a resource directly
-* <number>-<number> -> to reference a sequence of resources
-* !<number> -> to reference a resource to NOT be in the terraform command
+* \<number\> -> to reference a resource directly
+* \<number\>-\<number\> -> to reference a sequence of resources
+* !\<number\> -> to reference a resource to NOT be in the terraform command
 
 This are some examples:
 
