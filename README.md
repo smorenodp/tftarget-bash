@@ -32,6 +32,7 @@ There are some tags we can send when launching the tftarget to modify it's behav
 * -all -> select all resources and don't ask to select in the list
 * -y -> don't ask for user feedback and launch the command directly
 * -q -> quiet mode, don't show terraform output
+* -copy -> copy the command of terraform generated into the clipboard (xclip for linux, pbcopy for Mac)
 
 
 

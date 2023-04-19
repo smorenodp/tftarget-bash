@@ -12,6 +12,7 @@ CHECK=1
 OUTPUT=1
 CACHE=0
 ALL=0
+COPY=false
 
 contains() {
     element=$1
@@ -41,7 +42,6 @@ showResource() {
 }
 
 generateSeq() {
-    echo "Entering here"
     resource=$1
     local -n arr=$2
     range=(${resource/-/ })
@@ -93,12 +93,22 @@ while true; do
         OUTPUT=0
         shift
         ;;
-        
+        "-copy")
+        COPY=true
+        shift
+        ;;
         *)
         break
         ;;
     esac
 done
+
+unameOut="$(uname -s)"
+case "${unameOut}" in
+    Linux*)     machine=Linux;;
+    Darwin*)    machine=Mac;;
+    *)          machine="UNKNOWN:${unameOut}"
+esac
 
 echo "Generating tfplan..."
 if [[ $CACHE -eq 1 && -f "$TFPLAN" ]]; then
@@ -126,7 +136,9 @@ if [[ ! -z $NOMAD_ADDR ]]; then
     env=$(cat .terraform/environment)
     env=${env//-/.}
     if ! echo $NOMAD_ADDR | grep -q ${env%.1}; then
-        echo -e "${RED}Be careful! Your variables loaded are not the workspace being used!${NC}"
+	echo -e "${RED}$===================================================================={NC}"
+        echo -e "${RED} Be careful! Your variables loaded are not the workspace being used!${NC}"
+	echo -e "${RED}$===================================================================={NC}"
         echo
     fi
 fi
@@ -193,8 +205,15 @@ for resource in ${finalResources[@]}; do
     fi
 done
 
-
-echo -e "The command to launch is - ${BROWN}terraform $command -var-file=$VAR_FILE ${targets[@]}${NC}"
+if [ "$COPY" = true ] ; then
+    echo "Copying the command..."
+    if [[ "$machine" == "Linux" ]]; then
+        echo "terraform $command $VAR_FILE ${targets[@]}" | xclip -selection clipboard
+    elif [[ "$machine" == "Mac" ]]; then
+        echo "terraform $command $VAR_FILE ${targets[@]}" | pbcopy
+    fi
+fi
+echo -e "The command to launch is - ${BROWN}terraform $command $VAR_FILE ${targets[@]}${NC}"
 if [[ $CHECK -eq 1 ]]; then
     echo "Do you accept?"
     read accept
