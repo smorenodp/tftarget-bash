@@ -2,7 +2,7 @@
 
 Script to make easier the need to use targets in terraform, when launching tftarget in a terraform folder, apart from the normal output of terraform, the script returns something like this:
 
-![Report](https://github.com/smorenodp/tftarget/blob/main/images/report.png)
+![Report](https://github.com/smorenodp/tftarget-bash/blob/main/images/report.png)
 
 Each line corresponds with one resource that exists in the terraform report, the green one are the ones being created, the yellow ones the updated and the red ones the deleted (this is also explained next to the resource). The first thing we see in the line is a number, this is the id of the resource and the value used when referencing it in when selecting resources for the target command. There are 3 ways to reference them:
 
